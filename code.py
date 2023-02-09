@@ -1,13 +1,11 @@
 #!/usr/bin/env python
+from time import sleep
 from passlib.crypto.digest import pbkdf2_hmac
 import hashlib
 import argparse
 import os
 from struct import Struct
 from Crypto.Cipher import AES
-import base64
-from Crypto import Random
-from Crypto.Util.Padding import unpad
 import struct
 
 PBKDF2_ALGO = "sha1"
@@ -124,7 +122,8 @@ def decrypt_data(encryption_key, salt, passwd, data, debug=True):
         print('----------------')
 
     salt = hashlib.sha256(key).digest()
-    sector_number = struct.pack("<I", 2) + b'\x00' * (BLOCK_SIZE - 4)
+    # sector_number = b'\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    sector_number = struct.pack("<I", 0) + b'\x00' * (AES.block_size - 4)
     cipher = AES.new(key=salt, mode=AES.MODE_ECB)
     essiv = cipher.encrypt(sector_number)
     if debug:
@@ -132,37 +131,66 @@ def decrypt_data(encryption_key, salt, passwd, data, debug=True):
         print('ESSIV SALT     :', "0x" + salt.hex().upper())
         print('ESSIV IV       :', "0x" + essiv.hex().upper())
         print('----------------')
-    # cipher_for_data = AES.new(cipher_for_sector, AES.MODE_CBC, iv)
+
     cipher_for_data = AES.new(key, AES.MODE_CBC, essiv)
     data = cipher_for_data.decrypt(data)
     return data
 
 
-def bruteforce_data(data_file, key, salt):
+def write_to_file(file, data):
+    return
+
+
+def bruteforce_data(data_file, key, salt, wordlist_file=None, file=None):
+    if wordlist_file:
+        passwords = open(wordlist_file, 'r')
+        passwords = passwords.readlines()
+    else:
+        passwords = [(str('0000') + str(i))[-4:] for i in range(9999)]
+
     fd = open(data_file, 'rb')
-    data = fd.read(1024)
+    data = fd.read(512)
+    for passwd in passwords:
+        if wordlist_file:
+            passwd = passwd.strip()
+        dec_data = decrypt_data(key, salt, passwd, data, debug=False)
+        if int.from_bytes(dec_data, "big") == 0:
+            if file:
+                write_to_file(file, data)
+            # print(f'Crack: {passwd}')
+            # passwd = '1234'
+            dec_data = decrypt_data(key, salt, passwd, data)
+            print(f'DATA BEFORE\t{data.hex()}')
+            print(f'DATA AFTER\t{dec_data.hex()}')
+            break
+    # passwd = '1234'
+    # dec_data = decrypt_data(key, salt, passwd, data)
     fd.close()
-    print(data.hex())
-
-    passwd = '1234'
-    # print(len(key))
-    dec_data = decrypt_data(key, salt, passwd, data)
-
-    print(f'DATA BEFORE\t{data.hex()}')
-    print(f'DATA AFTER\t{dec_data.hex()}')
     return
 
 
 def main():
     parser = argparse.ArgumentParser(description='Decrypt FDE Android')
-    parser.add_argument('en_part', help='Encrypted /data partition')
-    parser.add_argument('footer', help='Footer struct')
+    parser.add_argument('-d', '--data', help='Encrypted /data partition')
+    parser.add_argument('-f', '--footer', help='Footer struct')
+    parser.add_argument('-w', '--wordlist', required=False, help='Wordlist')
+    parser.add_argument('-o', '--output', required=False, help='Output file')
     args = parser.parse_args()
-    assert os.path.isfile(args.footer), f"Footer file {args.footer} is not found"
-    assert os.path.isfile(args.en_part), f"Dump file {args.en_part} is not found"
+    # assert os.path.isfile(args.footer), f"Footer file {args.footer} is not found"
+    # assert os.path.isfile(args.data), f"Dump file {args.data} is not found"
 
+    wordlist = None
+    output = None
     key, salt = parse_footer(args.footer)
-    bruteforce_data(args.en_part, key, salt)
+    if args.wordlist and os.path.isfile(args.wordlist):
+        wordlist = args.wordlist
+    else:
+        print("Bruteforce PIN 0000-9999")
+    if args.output and os.path.isfile(args.output):
+        output = args.output
+    else:
+        print("Only crack")
+    bruteforce_data(args.data, key, salt, wordlist, output)
     return
 
 
