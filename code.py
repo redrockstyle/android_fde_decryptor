@@ -149,7 +149,7 @@ def procedure(data_file, key, salt, wordlist_file=None, file=None):
         passwords = [(str('0000') + str(i))[-4:] for i in range(9999)]
 
     fd = open(data_file, 'rb')
-    data = fd.read(BLOCK_SIZE)
+    data = fd.read(SECTOR_SIZE)
     for passwd in passwords:
         if wordlist_file:
             passwd = passwd.strip()
