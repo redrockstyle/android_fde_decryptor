@@ -25,6 +25,7 @@ KDF_NAMES[KDF_SCRYPT_KEYMASTER_BADLY_PADDED] = "scrypt+keymaster (badly padded)"
 KDF_NAMES[KDF_SCRYPT_KEYMASTER] = "scrypt+keymaster"
 CRYPT_TYPES = ('password', 'default', 'pattern', 'PIN')
 BLOCK_SIZE = 16
+SECTOR_SIZE = 512
 
 
 def parse_footer(footer_file):
@@ -101,7 +102,23 @@ def parse_footer(footer_file):
     return cryptoKey, cryptoSalt
 
 
-def decrypt_data(encryption_key, salt, passwd, data, debug=True):
+def decrypt_data(key, sector, data, debug=False):
+    salt = hashlib.sha256(key).digest()
+    # sector_number = b'\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
+    sector_number = struct.pack("<I", sector) + b'\x00' * (AES.block_size - 4)
+    cipher = AES.new(key=salt, mode=AES.MODE_ECB)
+    essiv = cipher.encrypt(sector_number)
+    if debug:
+        print('Decryption sector    :', "0x" + sector_number.hex().upper())
+        print('Key For ESSIV        :', "0x" + salt.hex().upper())
+        print('ESSIV IV             :', "0x" + essiv.hex().upper())
+
+    cipher_for_data = AES.new(key, AES.MODE_CBC, essiv)
+    data = cipher_for_data.decrypt(data)
+    return data
+
+
+def bruteforce_key(encryption_key, salt, passwd, data, sector=0, debug=True):
     key_size = len(encryption_key)
     # print(key_size)
     assert (key_size == 16 or key_size == 32), "Oversize key"
@@ -115,33 +132,16 @@ def decrypt_data(encryption_key, salt, passwd, data, debug=True):
     # key_sha256 = hashlib.sha256(key)
     # print(key_sha256.digest())
     if debug:
-        print('Password       :', passwd)
-        print('Derived Key    :', "0x" + key_hash.hex().upper())
-        print('Derived IV     :', "0x" + iv.hex().upper())
-        print('Decrypted Key  :', "0x" + key.hex().upper())
-        print('----------------')
+        print('Crack password       :', passwd)
+        print('Key Encryption Key   :', "0x" + key_hash.hex().upper())
+        print('IV for decryption    :', "0x" + iv.hex().upper())
+        print('Decrypted Key        :', "0x" + key.hex().upper())
 
-    salt = hashlib.sha256(key).digest()
-    # sector_number = b'\x02\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00'
-    sector_number = struct.pack("<I", 0) + b'\x00' * (AES.block_size - 4)
-    cipher = AES.new(key=salt, mode=AES.MODE_ECB)
-    essiv = cipher.encrypt(sector_number)
-    if debug:
-        print('SECTOR NUMBER  :', "0x" + sector_number.hex().upper())
-        print('ESSIV SALT     :', "0x" + salt.hex().upper())
-        print('ESSIV IV       :', "0x" + essiv.hex().upper())
-        print('----------------')
-
-    cipher_for_data = AES.new(key, AES.MODE_CBC, essiv)
-    data = cipher_for_data.decrypt(data)
-    return data
+    data = decrypt_data(key, sector, data)
+    return data, key
 
 
-def write_to_file(file, data):
-    return
-
-
-def bruteforce_data(data_file, key, salt, wordlist_file=None, file=None):
+def procedure(data_file, key, salt, wordlist_file=None, file=None):
     if wordlist_file:
         passwords = open(wordlist_file, 'r')
         passwords = passwords.readlines()
@@ -149,22 +149,27 @@ def bruteforce_data(data_file, key, salt, wordlist_file=None, file=None):
         passwords = [(str('0000') + str(i))[-4:] for i in range(9999)]
 
     fd = open(data_file, 'rb')
-    data = fd.read(512)
+    data = fd.read(BLOCK_SIZE)
     for passwd in passwords:
         if wordlist_file:
             passwd = passwd.strip()
-        dec_data = decrypt_data(key, salt, passwd, data, debug=False)
+        dec_data, decrypt_key = bruteforce_key(key, salt, passwd, data, debug=False)
         if int.from_bytes(dec_data, "big") == 0:
             if file:
-                write_to_file(file, data)
+                sectors = int(os.path.getsize(data_file) / SECTOR_SIZE)
+                fd.seek(0)
+                with open(file, 'wb') as write_tile:
+                    for i in range(0, sectors):
+                        data2 = fd.read(SECTOR_SIZE)
+                        dec_data = decrypt_data(decrypt_key, i, data2)
+                        # print(dec_data.hex())
+                        write_tile.write(dec_data)
             # print(f'Crack: {passwd}')
             # passwd = '1234'
-            dec_data = decrypt_data(key, salt, passwd, data)
+            dec_data, decrypt_key = bruteforce_key(key, salt, passwd, data)
             print(f'DATA BEFORE\t{data.hex()}')
             print(f'DATA AFTER\t{dec_data.hex()}')
             break
-    # passwd = '1234'
-    # dec_data = decrypt_data(key, salt, passwd, data)
     fd.close()
     return
 
@@ -176,8 +181,6 @@ def main():
     parser.add_argument('-w', '--wordlist', required=False, help='Wordlist')
     parser.add_argument('-o', '--output', required=False, help='Output file')
     args = parser.parse_args()
-    # assert os.path.isfile(args.footer), f"Footer file {args.footer} is not found"
-    # assert os.path.isfile(args.data), f"Dump file {args.data} is not found"
 
     wordlist = None
     output = None
@@ -186,11 +189,11 @@ def main():
         wordlist = args.wordlist
     else:
         print("Bruteforce PIN 0000-9999")
-    if args.output and os.path.isfile(args.output):
+    if args.output:
         output = args.output
     else:
         print("Only crack")
-    bruteforce_data(args.data, key, salt, wordlist, output)
+    procedure(args.data, key, salt, wordlist, output)
     return
 
 
