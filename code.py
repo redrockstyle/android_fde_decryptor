@@ -167,8 +167,8 @@ def procedure(data_file, key, salt, wordlist_file=None, file=None):
             # print(f'Crack: {passwd}')
             # passwd = '1234'
             dec_data, decrypt_key = bruteforce_key(key, salt, passwd, data)
-            # print(f'DATA BEFORE\t{data.hex()}')
-            # print(f'DATA AFTER\t{dec_data.hex()}')
+            # print(f' DATA BEFORE\t{data.hex()}')
+            # print(f' DATA AFTER\t{dec_data.hex()}')
             break
     fd.close()
     return
@@ -193,6 +193,7 @@ def main():
         output = args.output
     else:
         print("Only crack")
+    print('-------------------------')
     procedure(args.data, key, salt, wordlist, output)
     return
 
