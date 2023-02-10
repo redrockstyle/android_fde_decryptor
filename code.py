@@ -68,20 +68,20 @@ def parse_footer(footer_file):
          km_blob, km_blob_size,
          scrypted_intermediate_key) = s.unpack_from(footer)
 
-    print('| -------------------------')
-    print("| Android FDE crypto footer")
-    print('| -------------------------')
-    print('| Magic              :', "0x%0.8X" % ftrMagic)
-    print('| Major Version      :', majorVersion)
-    print('| Minor Version      :', minorVersion)
-    print('| Footer Size        :', ftrSize, "bytes")
-    print('| Flags              :', "0x%0.8X" % flags)
-    print('| Key Size           :', keySize * 8, "bits")
-    # print('| Password Type      :', f'{spare1} ({CRYPT_TYPES[spare1]})')
-    print('| Failed Decrypts    :', failedDecrypt)
-    print('| Crypto Type        :', ''.join(map(chr, cryptoType)))
-    print('| Encrypted Key      :', "0x" + cryptoKey.hex())
-    print('| Salt               :', "0x" + cryptoSalt.hex())
+    print('-------------------------')
+    print('Android FDE crypto footer')
+    print('-------------------------')
+    print('Magic              :', "0x%0.8X" % ftrMagic)
+    print('Major Version      :', majorVersion)
+    print('Minor Version      :', minorVersion)
+    print('Footer Size        :', ftrSize, "bytes")
+    print('Flags              :', "0x%0.8X" % flags)
+    print('Key Size           :', keySize * 8, "bits")
+    # print('Password Type      :', f'{spare1} ({CRYPT_TYPES[spare1]})')
+    print('Failed Decrypts    :', failedDecrypt)
+    print('Crypto Type        :', (''.join(map(chr, cryptoType))).split('\0')[0])
+    print('Encrypted Key      :', "0x" + cryptoKey.hex())
+    print('Salt               :', "0x" + cryptoSalt.hex())
     if minorVersion >= SCRYPT_ADDED_MINOR:
         if kdf in KDF_NAMES.keys():
             print('KDF                : %s' % KDF_NAMES[kdf])
@@ -98,7 +98,7 @@ def parse_footer(footer_file):
         print('keymaster blob     : %s...[%d]' % (km_blob.hex().upper()[0:32], km_blob_size))
         print('scrypted IK        : %s' % scrypted_intermediate_key.hex().upper())
         print("\n")
-    print('| -------------------------')
+    print('-------------------------')
     return cryptoKey, cryptoSalt
 
 
@@ -167,8 +167,8 @@ def procedure(data_file, key, salt, wordlist_file=None, file=None):
             # print(f'Crack: {passwd}')
             # passwd = '1234'
             dec_data, decrypt_key = bruteforce_key(key, salt, passwd, data)
-            print(f'DATA BEFORE\t{data.hex()}')
-            print(f'DATA AFTER\t{dec_data.hex()}')
+            # print(f'DATA BEFORE\t{data.hex()}')
+            # print(f'DATA AFTER\t{dec_data.hex()}')
             break
     fd.close()
     return
@@ -176,8 +176,8 @@ def procedure(data_file, key, salt, wordlist_file=None, file=None):
 
 def main():
     parser = argparse.ArgumentParser(description='Decrypt FDE Android')
-    parser.add_argument('-d', '--data', help='Encrypted /data partition')
-    parser.add_argument('-f', '--footer', help='Footer struct')
+    parser.add_argument('-d', '--data', required=True, help='Encrypted /data partition')
+    parser.add_argument('-f', '--footer', required=True, help='Footer struct')
     parser.add_argument('-w', '--wordlist', required=False, help='Wordlist')
     parser.add_argument('-o', '--output', required=False, help='Output file')
     args = parser.parse_args()
